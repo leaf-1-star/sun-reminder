@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日出日落提醒</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="icon.png">
+    <meta name="theme-color" content="#4CAF50">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .container {
+            width: 90%;
+            max-width: 600px;
+            margin: 20px auto;
+        }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 10px 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        button {
+            padding: 15px 25px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            width: 80%;
+            max-width: 300px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .time-display {
+            font-size: 1.2em;
+            margin: 10px 0;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h2>🌅 日出日落提醒</h2>
+            <div id="locationStatus">正在获取位置...</div>
+            <div id="sunTimes" class="time-display"></div>
+        </div>
+        <div class="card">
+            <button onclick="addToCalendar('sunrise')">添加日出提醒</button>
+            <button onclick="addToCalendar('sunset')">添加日落提醒</button>
+        </div>
+    </div>
+
+    <script>
+        let globalSunTimes = null;
+
+        function formatDateTime(date) {
+            return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+        }
+
+        function formatTime(date) {
+            return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        async function getSunTimes(latitude, longitude) {
+            const date = new Date();
+            const response = await fetch(`https://api.sunrise-sunset.org/json?lat=${latitude}&lng=${longitude}&date=${date.toISOString().split('T')[0]}&formatted=0`);
+            const data = await response.json();
+            
+            if (data.status === 'OK') {
+                const sunriseUTC = new Date(data.results.sunrise);
+                const sunsetUTC = new Date(data.results.sunset);
+                
+                // 转换为本地时间
+                const sunrise = new Date(sunriseUTC.getTime() + date.getTimezoneOffset() * 60000);
+                const sunset = new Date(sunsetUTC.getTime() + date.getTimezoneOffset() * 60000);
+                
+                return { sunrise, sunset };
+            }
+            throw new Error('无法获取日出日落时间');
+        }
+
+        function addToCalendar(type) {
+            if (!globalSunTimes) {
+                alert('正在加载数据，请稍候再试...');
+                return;
+            }
+
+            const time = type === 'sunrise' ? globalSunTimes.sunrise : globalSunTimes.sunset;
+            const title = type === 'sunrise' ? 
+                '🌅 嘿，太阳出来啦，我们一起加油！' : 
+                '🌆 看，晚霞真美，今天辛苦啦～';
+            
+            const reminderMinutes = type === 'sunrise' ? 10 : 0;
+            
+            const eventStart = new Date(time);
+            const eventEnd = new Date(time.getTime() + 5 * 60000);
+            
+            const event = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//日出日落提醒//CN',
+                'BEGIN:VEVENT',
+                `DTSTART:${formatDateTime(eventStart)}`,
+                `DTEND:${formatDateTime(eventEnd)}`,
+                `SUMMARY:${title}`,
+                `DESCRIPTION:${type === 'sunrise' ? 
+                    '亲爱的，早安！\\n\\n' +
+                    '记住：每一个尝试都是成长，\\n' +
+                    '每一步都在让自己更强大。\\n' +
+                    '不必和任何人比较，\\n' +
+                    '保持自己的节奏，慢慢来。💪\\n\\n' +
+                    '今天也要对自己温柔！' : 
+                    '亲爱的，辛苦了！\\n\\n' +
+                    '无论今天完成了多少，\\n' +
+                    '都请记住：尝试本身就很勇敢。\\n' +
+                    '给自己一个温暖的微笑，\\n' +
+                    '明天继续加油！🌟\\n\\n' +
+                    '现在，让心静下来休息吧～'}`,
+                'RRULE:FREQ=DAILY',
+                'BEGIN:VALARM',
+                'ACTION:AUDIO',
+                `DESCRIPTION:${type === 'sunrise' ? 
+                    '🌅 嘿，太阳快出来啦！\n新的一天，让我们一起充满希望地开始吧～' : 
+                    '🌆 夕阳西下的时候最美，\n今天的你也很棒，好好休息吧～'}`,
+                `TRIGGER:-PT${reminderMinutes}M`,
+                'DURATION:PT1M',
+                'REPEAT:1',
+                'ACTION:AUDIO',
+                'ATTACH;FMTTYPE=audio/basic:FILEA',
+                'END:VALARM',
+                'END:VEVENT',
+                'END:VCALENDAR'
+            ].join('\n');
+
+            const blob = new Blob([event], { type: 'text/calendar;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${title}.ics`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            alert(type === 'sunrise' ? 
+                '日出提醒已添加到日历！\n将在每天日出前10分钟提醒你。' : 
+                '日落提醒已添加到日历！\n将在每天日落时刻提醒你。');
+        }
+
+        // 获取位置并更新日出日落时间
+        if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(async position => {
+                try {
+                    document.getElementById('locationStatus').textContent = '正在计算日出日落时间...';
+                    globalSunTimes = await getSunTimes(position.coords.latitude, position.coords.longitude);
+                    document.getElementById('sunTimes').innerHTML = 
+                        `今日日出：${formatTime(globalSunTimes.sunrise)}<br>` +
+                        `今日日落：${formatTime(globalSunTimes.sunset)}`;
+                    document.getElementById('locationStatus').textContent = '✅ 已获取当前位置';
+                } catch (error) {
+                    document.getElementById('locationStatus').textContent = '无法获取日出日落时间，请稍后再试';
+                }
+            }, error => {
+                document.getElementById('locationStatus').textContent = '请允许获取位置信息以计算准确的日出日落时间';
+            });
+        } else {
+            document.getElementById('locationStatus').textContent = '您的浏览器不支持位置服务';
+        }
+
+        // 注册 Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(registration => console.log('ServiceWorker registered'))
+                .catch(err => console.log('ServiceWorker registration failed: ', err));
+        }
+    </script>
+</body>
+</html>
